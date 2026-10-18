@@ -1,0 +1,39 @@
+*Reference, for people running the frontend-web-developer plugin's workflows who need the exact inputs and outputs.*
+
+# embed-web-build
+
+| Field | Value |
+|---|---|
+| File | [`workflows/embed-web-build.js`](../../../workflows/embed-web-build.js) |
+| Invoke | `/frontend-web-developer:embed-web-build` |
+| Purpose | Host and embed an interactive web build with an event bridge, verify, fix, document |
+| Skills used | `embedding-web-builds`, `static-sites-and-hosting`, `web-accessibility`, `web-performance` |
+
+## Arguments
+
+| Arg | Required | Type | Example |
+|---|---|---|---|
+| `build` | yes | string: path to the web build output | `"dist/web"` |
+| `page` | yes | string: site path of the hosting page | `"/play/"` |
+| `contract` | no | string: path to an existing event contract doc | `"docs/reference/web-build-events.md"` |
+
+Missing `build` or `page` returns the usage string.
+
+## Phases
+
+| Phase | Agents | Does |
+|---|---|---|
+| Plan | 1 | Build file inventory (size, MIME, encoding), isolation need, bridge choice, event contract, questions for the build's owner, doc pages via the compass |
+| Build | 1 | Sole editor: host headers for the build page only, page, bridge; commits |
+| Verify | 5 in parallel, read-only | hosting-headers, loading-and-failure, contract, accessibility, performance |
+| Fix | 1 per round, at most 2 rounds | Fixes blocker and major issues; problems inside the build go to its owner as requests |
+| Docs | 1 | Contract and headers (reference), bridge reasoning (explanation), update procedure (how-to) |
+| Docs check | 1 | One kind per page, titles, links |
+
+## Output
+
+| `status` | Fields |
+|---|---|
+| `ready` | `page`, `bridge`, `built`, `minor_issues`, `questions_for_build_owner`, `docs`, `docs_check` |
+| `blocked` | `open_items` or `reason`, `minor`, `questions_for_build_owner` |
+| string | Usage, or a planning/build failure message |

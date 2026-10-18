@@ -1,0 +1,23 @@
+{
+  "name": "frontend-web-developer",
+  "version": "0.1.0",
+  "description": "Front-end web developer role: builds fast, accessible, privacy-respecting websites: static sites, landing and download pages with platform detection and store links, embedded interactive web builds, credits and licensing pages, WCAG 2.2 AA, SEO, Core Web Vitals, hosting and deployment.",
+  "author": {
+    "name": "opsroller"
+  },
+  "repository": "https://github.com/opsroller/frontend-web-developer",
+  "license": "GPL-2.0-or-later",
+  "keywords": [
+    "role",
+    "job-function",
+    "frontend",
+    "web",
+    "accessibility",
+    "wcag",
+    "seo",
+    "performance",
+    "core-web-vitals",
+    "static-site",
+    "webassembly"
+  ]
+}
