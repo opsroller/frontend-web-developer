@@ -9,6 +9,7 @@ export const meta = {
     { title: 'Fix', detail: 'up to two fix rounds; blocked if blockers remain' },
     { title: 'Docs', detail: 'write the planned Diataxis pages in the same PR' },
     { title: 'Docs check', detail: 'one kind per page, titles, links' },
+    { title: 'Handoff', detail: 'commit and push the host page, headers and bridge, run the site checks, return a handoff for engineering-practices deliver-package or land-pr' },
   ],
 }
 
@@ -180,7 +181,7 @@ if (open.length) return { status: 'blocked', page, open_items: open, minor, ques
 phase('Docs')
 const docs = await agent(
   `You are the frontend-web-developer. Document the embedded web build on ${page} in the same branch, following the planned doc pages:\n${JSON.stringify(plan.doc_pages)}\n${DOCS_FRAGMENT}\nThe event contract table and required headers are reference; the bridge and click-to-load reasoning is explanation; updating the build to a new release is a how-to. What was built: ${built}`,
-  { phase: 'Docs', label: 'docs' },
+  { schema: { type: 'object', properties: { pages: { type: 'array', items: { type: 'string' } }, undocumented: { type: 'array', items: { type: 'string' } } }, required: ['pages'] }, phase: 'Docs', label: 'docs' },
 )
 if (!docs) return { status: 'blocked', page, reason: 'docs step failed; the change is not done without its docs', built }
 
@@ -188,12 +189,23 @@ phase('Docs check')
 const DOCCHECK = { type: 'object', properties: { ok: { type: 'boolean' }, problems: { type: 'array', items: { type: 'string' } } }, required: ['ok'] }
 // The check only reads, so it stays independent of the writing; small
 // fixes are their own step, followed by a fresh check.
-const docCheckPrompt = `Review the doc pages just written for the embedded web build (report: ${docs}). Check each page holds one Diataxis kind only, titles follow the patterns, and the kinds link to each other. Read-only: do not edit anything; report every problem with its page.`
+const docCheckPrompt = `Review the doc pages just written for the embedded web build (report: ${JSON.stringify(docs)}). Check each page holds one Diataxis kind only, titles follow the patterns, and the kinds link to each other. Read-only: do not edit anything; report every problem with its page.`
 let check = await agent(docCheckPrompt, { schema: DOCCHECK, phase: 'Docs check', label: 'docs-check', independent: true })
 if (check && !check.ok && (check.problems || []).length) {
   const docFix = await agent(`Fix these documentation problems with the smallest edits, touching only the pages they name; leave anything that needs a content decision:\n- ${check.problems.join('\n- ')}`, { phase: 'Docs check', label: 'docs-fix' })
   if (docFix) check = await agent(docCheckPrompt, { schema: DOCCHECK, phase: 'Docs check', label: 'docs-recheck', independent: true })
 }
+
+// The handoff is what engineering-practices deliver-package takes as
+// prior, so the embed ships without being built again.
+phase('Handoff')
+const HANDOFF = { type: 'object', properties: { branch: { type: 'string' }, pr: { type: 'string' }, head_sha: { type: 'string' }, tests_pass: { type: 'boolean' }, problem: { type: 'string' } }, required: ['branch', 'tests_pass'] }
+const hand = await agent(
+  `Hand off the embedded web build on ${page}. If you are on the default branch, cut a Conventional branch (feat/<slug>) from the latest remote default branch; otherwise stay on the current feature branch. Commit every file this run wrote (the host header config, page and bridge script: ${(plan.files_to_change || []).join(', ') || 'as built'}, never the build output itself; and the docs pages: ${(docs.pages || []).join(', ') || 'as written'}) as Conventional Commits, and push. Run the project's checks that apply on the pushed head: the site build and tests, and the header, link and docs checks the project profile names. Do not open, mark ready or merge a PR: the engineering-practices workflow named in the result does that. Follow the engineering-practices git-workflow skill. Return the branch, any open PR, the head commit SHA, whether the checks pass on that head, and the problem if not.`,
+  { schema: HANDOFF, phase: 'Handoff', label: 'handoff' },
+)
+if (!hand || !hand.branch) return { status: 'blocked', page, reason: hand && hand.problem ? hand.problem : 'handoff step returned nothing; the work may be uncommitted or unpushed', built }
+if (!hand.tests_pass) return { status: 'blocked', page, reason: `site checks fail on ${hand.branch}${hand.head_sha ? ' at ' + hand.head_sha : ''}: ${hand.problem || 'no details'}`, built }
 
 return {
   status: 'ready',
@@ -204,5 +216,16 @@ return {
   questions_for_build_owner: plan.questions_for_build_owner || [],
   docs,
   docs_check: !check ? 'docs check failed: pages unverified' : check.ok ? 'ok' : check.problems || ['docs check failed without details'],
+  handoff: {
+    from: 'frontend-web-developer:embed-web-build',
+    branch: hand.branch,
+    pr: hand.pr || '',
+    head_sha: hand.head_sha || '',
+    tests_pass: true,
+    docs: docs.pages || [],
+    undocumented: docs.undocumented || [],
+    notes: (plan.questions_for_build_owner || []).length ? [`open questions for the build owner: ${plan.questions_for_build_owner.join('; ')}`] : [],
+  },
+  next: 'ship it without rebuilding: /engineering-practices:deliver-package { wp: "<the package>", prior: <this result> }; with no work package, /engineering-practices:land-pr { branch: "<handoff.branch>" }',
 }
 })(RUN.agent, RUN.phase, RUN.log)]); return RUN.finish(RUN_OUT)

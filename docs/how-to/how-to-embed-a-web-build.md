@@ -24,5 +24,10 @@ arguments and outputs.
 6. On the preview, confirm: nothing downloads until you click play; the
    keyboard can leave the build; the console shows
    `self.crossOriginIsolated === true` on the play page if threads are used.
-7. For a new build release, replace the build files and run the workflow
+7. Ship it. For a work package, pass the whole result as `prior` to
+   engineering-practices deliver-package so it ships without being built
+   again: `/engineering-practices:deliver-package { wp: "<the package>", prior: <this result> }`.
+   With no work package, land the pushed branch with
+   `/engineering-practices:land-pr { branch: "<handoff.branch>" }`.
+8. For a new build release, replace the build files and run the workflow
    again so the checks and the reference docs stay current.

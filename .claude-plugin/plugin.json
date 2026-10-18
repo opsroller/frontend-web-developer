@@ -1,6 +1,6 @@
 {
   "name": "frontend-web-developer",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Front-end web developer role: builds fast, accessible, privacy-respecting websites: static sites, landing and download pages with platform detection and store links, embedded interactive web builds, credits and licensing pages, WCAG 2.2 AA, SEO, Core Web Vitals, hosting and deployment.",
   "author": {
     "name": "opsroller"
