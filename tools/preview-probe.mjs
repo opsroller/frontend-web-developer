@@ -116,6 +116,7 @@ if (opt.root) {
 // --- browser probe ----------------------------------------------------------
 const load = () => {
   const tries = [createRequire(resolve('package.json'))]
+  for (const dir of String(process.env.NODE_PATH || '').split(process.platform === 'win32' ? ';' : ':').filter(Boolean)) tries.push(createRequire(join(resolve(dir), 'x')))
   try { tries.push(createRequire(join(execSync('npm root -g', { encoding: 'utf8' }).trim(), 'x'))) } catch {}
   for (const req of tries) for (const name of ['playwright', '@playwright/test']) { try { return req(name) } catch {} }
   return null
@@ -261,6 +262,20 @@ const focus = { focused_after_start: !!(c && c.focused), focusable: !!(c && c.fo
 if (c && !c.focusable) problem('accessibility', 'major', 'canvas is not focusable (tabindex)')
 if (c && !c.name) problem('accessibility', 'major', 'canvas has no accessible name (aria-label)')
 if (opt.releaseKey && c) {
+  // Put focus on the canvas first, as a player clicking into it would, so the
+  // check tests the trap rather than keys landing on <body>.
+  let focusedNow = false
+  for (const f of page.frames()) {
+    const el = await f.$(opt.canvas).catch(() => null)
+    if (!el) continue
+    await el.focus().catch(() => {})
+    focusedNow = await f.evaluate((sel) => document.activeElement === document.querySelector(sel), opt.canvas).catch(() => false)
+    break
+  }
+  focus.focused_for_release_check = focusedNow
+}
+if (opt.releaseKey && c && !focus.focused_for_release_check) problem('accessibility', 'major', `could not focus the canvas to test ${opt.releaseKey}; the keyboard-trap check did not run`)
+if (opt.releaseKey && c && focus.focused_for_release_check) {
   await page.keyboard.press(opt.releaseKey)
   await page.keyboard.press('Tab')
   await page.waitForTimeout(200)

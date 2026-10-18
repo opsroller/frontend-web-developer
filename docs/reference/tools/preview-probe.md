@@ -6,7 +6,7 @@
 |---|---|
 | File | [`tools/preview-probe.mjs`](../../../tools/preview-probe.mjs) |
 | Self-test | [`tools/test-preview-probe.mjs`](../../../tools/test-preview-probe.mjs) (`node tools/test-preview-probe.mjs`) |
-| Needs | Node 18+, Playwright (`playwright` or `@playwright/test`, found from the current directory or the global modules) with the browser to run |
+| Needs | Node 18+, Playwright (`playwright` or `@playwright/test`, found from the current directory, each `NODE_PATH` entry, or the global modules) with the browser to run. A scratch install (`npm install --no-save playwright` in a scratch directory) is found with `NODE_PATH=<scratch>/node_modules`, or by running the probe from that directory with absolute `--root` and `--out` paths |
 | Used by | `embed-web-build` (Preview phase), `site-audit` (embedded-build dimension), the [embedding-web-builds](../skills/embedding-web-builds.md) skill |
 | Exit code | 0 no problems; 1 problems found (listed in the report); 2 usage error or Playwright missing |
 
@@ -57,7 +57,7 @@ headers, not what the host sends.
 | `loading` | play control missing; no ready signal before the timeout; a build file returns 4xx/5xx; progress never changes; a download over 100 KB finishes after progress shows complete |
 | `hosting-headers` | a `.wasm` file is not served as `application/wasm` |
 | `canvas` | backing store is the 300x150 default, or differs from CSS size x DPR by more than 5% (major above 25%) at a viewport |
-| `accessibility` | canvas not focusable or unnamed; the release key then Tab leaves focus on the canvas |
+| `accessibility` | canvas not focusable or unnamed; with `--release-key`, the probe focuses the canvas first, then the release key then Tab must move focus off it (problem if focus stays, or if the canvas cannot be focused) |
 | `loading-and-failure` | a failed fetch shows no error within the wait (start() left pending); retry missing or does not reach ready |
 
 ## Report
