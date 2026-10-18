@@ -36,10 +36,12 @@ node tools/preview-probe.mjs --root <built site dir> --serve-only [--port 8080]
 | `--header '<glob>\|<Name>: <value>'` | none | Header the local server adds on matching paths; repeatable |
 | `--headers-file <file>` | none | Netlify/Cloudflare-style `_headers` file the local server applies |
 | `--fail auto\|none\|<parts>` | `auto` | Files to fail one at a time: every first-party file fetched after the click, none, or a comma list of URL parts |
+| `--flaky auto\|none\|<parts>` | `auto` | Files to fail once each (then serve normally), same choices as `--fail` |
+| `--flaky-modes <modes>` | `abort,503,truncate` | How the first request fails: `abort` (network error), `503` (error response), `truncate` (full headers, half the body, then the connection drops; needs `--root`) |
 | `--build-pattern <regex>` | `\.(wasm\|pck\|data\|bin)(\?\|$)` | URLs that count as build bytes for the before-click check |
 | `--viewport <w>x<h>[@<dpr>]` | `1280x720@2`, `390x844` | Viewports for the canvas check; the first sets the DPR, later ones resize the same page |
 | `--browser <name>` | `chromium` | `chromium`, `firefox` or `webkit` |
-| `--timeout <ms>` | `30000` | Wait for ready; a failed-fetch run waits at most 15 s |
+| `--timeout <ms>` | `30000` | Wait for ready; a failed-fetch or fail-once run waits at most 15 s for ready or the error |
 | `--out <file>` | none | Also write the report to this file |
 | `--port <n>` | random | Port for the local server |
 | `--serve-only` | | Only serve `--root` until stopped |
@@ -58,7 +60,7 @@ headers, not what the host sends.
 | `hosting-headers` | a `.wasm` file is not served as `application/wasm` |
 | `canvas` | backing store is the 300x150 default, or differs from CSS size x DPR by more than 5% (major above 25%) at a viewport |
 | `accessibility` | canvas not focusable or unnamed; with `--release-key`, the probe focuses the canvas first, then the release key then Tab must move focus off it (problem if focus stays, or if the canvas cannot be focused) |
-| `loading-and-failure` | a failed fetch shows no error within the wait (start() left pending); retry missing or does not reach ready |
+| `loading-and-failure` | a failed fetch shows no error within the wait (start() left pending); retry missing or does not reach ready; after a one-time failure of a file: no ready and no error (blocker), ready with only the failed response so the page used it as the file, or retry does not reach ready although the file now serves (the report says when retry never requested it again) |
 
 ## Report
 
@@ -67,6 +69,10 @@ JSON on stdout: `url`, `served_from`, `browser`, `viewports`,
 with status, type and encoding, console and page errors, cls, progress),
 `canvas` (per viewport: backing store, CSS size, DPR, frame), `focus`,
 `failures` (per file: outcome `error-shown`, `ready-anyway`, `hung` or
-`no-play-control`, ms, retry), `headers` (per build file: content type,
+`no-play-control`, ms, retry), `partial_failures` (per file and mode:
+outcome `recovered` (the page's own retry), `recovered-after-retry`,
+`ready-on-bad-data`, `retry-failed`, `hung`, `error-shown` (no `--retry`
+given), `no-retry-control`, `no-play-control` or `skipped`, ms, requests
+for the file, `refetched` after the retry click, note), `headers` (per build file: content type,
 encoding, COOP, COEP), `cross_origin_isolated`, `problems` (check,
 severity, detail).

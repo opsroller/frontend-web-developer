@@ -45,6 +45,7 @@ Unknown events are ignored, never fatal.
 | Canvas backing store not sized when the page owns layout | blurry 300x150 canvas |
 | Downloads that bypass the engine's progress API | progress complete while bytes still arrive |
 | Engine `start()` pending on a failed fetch | page waits forever, no error |
+| Retry that reuses the failed request, promise or stream; unchecked status or swallowed body error | a one-time failure never recovers, or the build starts on an error page or partial bytes |
 
 ## Undeployed builds
 

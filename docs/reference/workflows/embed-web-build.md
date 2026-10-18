@@ -27,7 +27,7 @@ Missing `build` or `page` returns the usage string.
 | Plan | 1 | Build file inventory (size, MIME, encoding), isolation need, bridge choice, event contract, who owns the canvas size, how each known failure mode is avoided, the probe setup (site build, root, selectors, ready event, header file), questions for the build's owner, doc pages via the compass |
 | Build | 1 | Sole editor: host headers for the build page only, page, bridge, failure-mode guards; commits |
 | Preview | 1 before each verify round | Serves the built site locally (or uses `url`) and runs [`tools/preview-probe.mjs`](../tools/preview-probe.md); its report is the evidence for every check. Read-only |
-| Verify | 5 in parallel, read-only | hosting-headers (host config when undeployed), loading-and-failure (progress bypass, failed fetch per file, retry, canvas size), contract, accessibility, performance |
+| Verify | 5 in parallel, read-only | hosting-headers (host config when undeployed), loading-and-failure (progress bypass, failed fetch per file, one-time failure per file, retry, canvas size), contract, accessibility, performance |
 | Fix | 1 per round, at most 2 rounds | Fixes blocker and major issues; problems inside the build go to its owner as requests |
 | Polish | 1, then a final Preview and Verify | Fixes the minor issues left; the final round sets `minor_issues`. A blocker or major issue in that round blocks the run |
 | Docs | 1 | Contract and headers (reference), bridge reasoning (explanation), update procedure (how-to) |
