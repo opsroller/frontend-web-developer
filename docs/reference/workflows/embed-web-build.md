@@ -16,6 +16,7 @@
 | `build` | yes | string: path to the web build output | `"dist/web"` |
 | `page` | yes | string: site path of the hosting page | `"/play/"` |
 | `contract` | no | string: path to an existing event contract doc | `"docs/reference/web-build-events.md"` |
+| `url` | no | string: deployed or preview URL of the page; omit to build and serve the site locally | `"https://preview.example.org/play/"` |
 
 Missing `build` or `page` returns the usage string.
 
@@ -23,10 +24,12 @@ Missing `build` or `page` returns the usage string.
 
 | Phase | Agents | Does |
 |---|---|---|
-| Plan | 1 | Build file inventory (size, MIME, encoding), isolation need, bridge choice, event contract, questions for the build's owner, doc pages via the compass |
-| Build | 1 | Sole editor: host headers for the build page only, page, bridge; commits |
-| Verify | 5 in parallel, read-only | hosting-headers, loading-and-failure, contract, accessibility, performance |
+| Plan | 1 | Build file inventory (size, MIME, encoding), isolation need, bridge choice, event contract, who owns the canvas size, how each known failure mode is avoided, the probe setup (site build, root, selectors, ready event, header file), questions for the build's owner, doc pages via the compass |
+| Build | 1 | Sole editor: host headers for the build page only, page, bridge, failure-mode guards; commits |
+| Preview | 1 before each verify round | Serves the built site locally (or uses `url`) and runs [`tools/preview-probe.mjs`](../tools/preview-probe.md); its report is the evidence for every check. Read-only |
+| Verify | 5 in parallel, read-only | hosting-headers (host config when undeployed), loading-and-failure (progress bypass, failed fetch per file, retry, canvas size), contract, accessibility, performance |
 | Fix | 1 per round, at most 2 rounds | Fixes blocker and major issues; problems inside the build go to its owner as requests |
+| Polish | 1, then a final Preview and Verify | Fixes the minor issues left; the final round sets `minor_issues`. A blocker or major issue in that round blocks the run |
 | Docs | 1 | Contract and headers (reference), bridge reasoning (explanation), update procedure (how-to) |
 | Docs check | 1 | One kind per page, titles, links |
 | Handoff | 1 | Commits and pushes the host config, page, bridge and docs on a feature branch, runs the site checks on the pushed head; never opens or merges a PR |
@@ -35,8 +38,8 @@ Missing `build` or `page` returns the usage string.
 
 | `status` | Fields |
 |---|---|
-| `ready` | `page`, `bridge`, `built`, `minor_issues`, `questions_for_build_owner`, `docs` (`pages`, `undocumented`), `docs_check`, `handoff`, `next` |
-| `blocked` | `open_items` or `reason`, `minor`, `questions_for_build_owner`; `reason` also names a handoff that returned no branch or checks that fail on the pushed head |
+| `ready` | `page`, `bridge`, `built`, `minor_issues` (still open after the last verify round), `minor_fixed`, `minor_left` (with why), `verify_rounds`, `questions_for_build_owner`, `docs` (`pages`, `undocumented`), `docs_check`, `handoff`, `next` |
+| `blocked` | `open_items` or `reason`, `minor`, `polished` when the final verify after Polish failed, `questions_for_build_owner`; `reason` also names a handoff that returned no branch or checks that fail on the pushed head |
 | string | Usage, or a planning/build failure message |
 
 ## Handoff
@@ -45,7 +48,7 @@ Missing `build` or `page` returns the usage string.
 [deliver-package](https://github.com/opsroller/engineering-practices/blob/main/docs/reference/workflow-deliver-package.md)
 takes as `prior`, so pass the whole result and the embed ships without
 being built again: `from` (`frontend-web-developer:embed-web-build`), `branch`,
-`pr`, `head_sha`, `tests_pass`, `docs`, `undocumented`, `notes` (open questions for the build owner).
+`pr`, `head_sha`, `tests_pass`, `docs`, `undocumented`, `notes` (open questions for the build owner, and the minor issues still open after the final verify).
 The Handoff phase commits and pushes on a feature branch and runs the
 project's checks on the pushed head; it never opens or merges a PR. With
 no work package, land the branch with land-pr instead; `next` names both.
@@ -58,6 +61,6 @@ Run modes v2. Besides its own args, the workflow takes the optional `run` arg de
 and `run.from` with `run.results` resumes a stopped run. Without `run`, the workflow and its outputs are as above.
 See [how to run a workflow inline](https://github.com/opsroller/engineering-practices/blob/main/docs/how-to/how-to-run-a-workflow-inline.md).
 
-Step labels, for `run.only` and `run.results`: `plan`, `build`, `<check>#<round>` (`hosting-headers`, `loading-and-failure`, `contract`, `accessibility`, `performance`), `fix#<round>`, `docs`, `docs-check`, `docs-fix` and `docs-recheck` (when the docs check finds problems), `handoff`.
+Step labels, for `run.only` and `run.results`: `plan`, `build`, `preview#<round>`, `<check>#<round>` (`hosting-headers`, `loading-and-failure`, `contract`, `accessibility`, `performance`), `fix#<round>`, `polish` (then the next round's `preview#<round>` and checks), `docs`, `docs-check`, `docs-fix` and `docs-recheck` (when the docs check finds problems), `handoff`.
 
 Independent steps: `<check>#<round>`, `docs-check`, `docs-recheck`. They review work this run produced, so in inline mode send each to a reviewer with no part in the work and name them in `run.reviewers`; a step you answer yourself is reported in `self_reviewed`.

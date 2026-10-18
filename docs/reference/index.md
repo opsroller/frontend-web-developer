@@ -31,6 +31,10 @@ Quality of the site:
 - [build-download-page](workflows/build-download-page.md): release data to verified, documented download page.
 - [embed-web-build](workflows/embed-web-build.md): web build to verified, documented embed.
 
+## Tools
+
+- [preview-probe](tools/preview-probe.md): serve an undeployed site and probe an embedded web build in a real browser.
+
 ## Sources
 
 - [SOURCES.md](../../SOURCES.md): the research this role is built on.
