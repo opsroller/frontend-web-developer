@@ -17,7 +17,11 @@ data and verified. For field and argument lists see the
    `/download/`, and `"platforms"` to limit which platforms appear.
 4. Read the result:
    - `status: "ready"`: open the preview and check the primary button on
-     your own device, then open the PR.
+     your own device, then ship it. For a work package, pass the whole result as `prior` to engineering-practices
+     deliver-package so it ships without being built again:
+     `/engineering-practices:deliver-package { wp: "<the package>", prior: <this result> }`.
+     With no work package, land the pushed branch with
+     `/engineering-practices:land-pr { branch: "<handoff.branch>" }`.
    - `status: "blocked"`: work through `open_items`. Data problems
      (missing checksums, sizes) go to the devops-engineer; then run again.
    - `missing_data` not empty: the page shows what exists; ask for the rest.

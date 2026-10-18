@@ -66,8 +66,8 @@ Start Claude Code in `practice-site` and run:
 
 with the arguments `{ "releaseData": "data/releases.json", "page": "/download/" }`.
 
-The progress view shows six phases: **Plan, Build, Verify, Fix, Docs,
-Docs check**. Notice that Verify runs four checkers side by side:
+The progress view shows seven phases: **Plan, Build, Verify, Fix, Docs,
+Docs check, Handoff**. Notice that Verify runs four checkers side by side:
 `detection`, `links-and-data`, `accessibility` and `performance-seo`.
 
 When it finishes, the result should start with `"status": "ready"`. Had
