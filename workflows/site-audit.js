@@ -157,7 +157,7 @@ const dims = [
   ['privacy', 'privacy-respecting-analytics', 'every third-party request and cookie, analytics configuration and payloads, privacy note accuracy, analytics disabled on previews.'],
 ]
 if (plan.has_downloads) dims.push(['downloads', 'download-pages', 'detection only picks the primary button and every platform stays listed and reachable in one click (including with JavaScript off and for an iPad reporting as Mac); every link resolves; versions, sizes, checksums come from release data; store badges official, sized and spaced per store rules, with alt text.'])
-if (plan.has_embedded_build) dims.push(['embedded-build', 'embedding-web-builds', 'MIME types, Content-Encoding, cross-origin isolation scoped to the build page, click-to-load, progress and failure states, fallback when unsupported, keyboard can enter and leave, postMessage origin checks, every contract event handled.'])
+if (plan.has_embedded_build) dims.push(['embedded-build', 'embedding-web-builds', 'MIME types, Content-Encoding, cross-origin isolation scoped to the build page, click-to-load, progress and failure states, fallback when unsupported, keyboard can enter and leave, postMessage origin checks, every contract event handled, canvas backing store sized to its box x devicePixelRatio, no download outside the progress shown, a failed fetch of each build file ends in an error with retry (never a pending start). When the site is not deployed, serve it locally and run this plugin\'s tools/preview-probe.mjs (embedding-web-builds skill, "Audit a build that is not deployed yet") instead of assuming a URL.'])
 
 phase('Audit')
 const results = await parallel(dims.map(([dim, skill, what]) => () =>

@@ -75,6 +75,12 @@ not have (see cross-origin isolation below) or comes from another origin.
 
 - **Sizing:** responsive container; handle `resize` and device pixel ratio;
   a fullscreen button using the Fullscreen API (only on user gesture).
+  Decide who owns the canvas size. If the page's CSS sizes the canvas and
+  the engine does not, the canvas keeps its 300x150 default backing store
+  (or the size it had at start) and is stretched blurry: set
+  `canvas.width`/`height` to its box times `devicePixelRatio` on start and
+  on every resize (a `ResizeObserver` on the canvas). If the engine owns
+  the size, do not also size it from the page.
 - **Focus and keyboard:** the canvas is focusable (`tabindex="0"`) with an
   accessible name ("Game: press Escape to release keyboard"); the build must
   release focus on a documented key so keyboard users are never trapped
@@ -87,11 +93,43 @@ not have (see cross-origin isolation below) or comes from another origin.
 - **Text around the canvas:** controls and instructions as HTML beside the
   build, since canvas content is invisible to assistive technology.
 
+## 6. Audit a build that is not deployed yet
+
+Most embeds are built and reviewed before anything is deployed, so the
+checks cannot start with `curl -sI <url>`. Audit it locally instead:
+
+1. Build the site with the project's site build command.
+2. Serve the built site and probe the page in a real browser with this
+   plugin's harness, `tools/preview-probe.mjs` (Playwright):
+
+   ```
+   node <plugin dir>/tools/preview-probe.mjs --root <built site> --page /play/ \
+     --play '#play' --ready <ready event> --error '#load-error' --retry '#retry' \
+     --progress '#progress' --canvas canvas --release-key Escape \
+     --headers-file <host header file, if any> --out <report.json outside the repo>
+   ```
+
+   It records what loads before the click, clicks play, waits for the
+   ready event, checks that no download finishes after progress shows
+   complete, measures the canvas backing store against its box at two
+   viewports, checks focus and the release key, then fails the fetch of
+   each build file in turn and checks the page shows an error and that
+   retry recovers. It exits 1 with a `problems` list when anything fails.
+   `--serve-only` just serves the site for manual or Lighthouse runs.
+3. Headers: the local server sends what `--header` and `--headers-file`
+   give it, so it shows the page works with the host's header file, not
+   that the host sends it. Read the host config for the deployed values
+   and list the headers only a deploy can confirm (and confirm them with
+   `curl -sI` once a preview or production URL exists).
+4. Repeat in Firefox and WebKit (`--browser firefox|webkit`) where the
+   build supports them.
+
 ## Quality bar
 
-- Loads on the deployed host in current Chromium, Firefox and Safari
-  (desktop and mobile where supported), with correct MIME, encoding and
-  isolation headers verified by `curl -sI`.
+- Loads in current Chromium, Firefox and Safari (desktop and mobile where
+  supported). Before deploy, the preview probe passes on the locally served
+  build; once deployed, correct MIME, encoding and isolation headers are
+  verified by `curl -sI` on the host.
 - The landing page's Core Web Vitals do not change when the build is added
   (click-to-load).
 - Every contract event is handled or deliberately ignored; origin checks in
@@ -107,11 +145,21 @@ not have (see cross-origin isolation below) or comes from another origin.
 - `postMessage(msg, "*")` and listeners that trust any origin.
 - Auto-loading a 50 MB build on the landing page.
 - Infinite spinner on failure; keyboard trapped in the canvas.
+- Canvas backing store left at the 300x150 default (or its first size)
+  when the page owns the layout: the build renders blurry and stretched.
+- Runtime downloads that bypass the engine's progress API (side modules,
+  extra wasm, data packs the loader fetches itself): progress reads
+  complete while megabytes still arrive. Preload them through the engine
+  or count their bytes in the page's progress.
+- An engine whose `start()` never settles when a fetch fails: the page
+  waits forever with no error. Watch fetch and resource errors (wrap
+  `fetch`, use the engine's error callback) and add a watchdog timeout
+  that shows the error state with retry.
 
 ## Docs this work owes
 
 - **Reference:** the event contract table, required headers, file list and
-  sizes, the page URL.
+  sizes, the page URL, and the preview probe command with its selectors.
 - **Explanation:** why same-document vs iframe, why click-to-load ("About
   embedding the web build").
 - **How-to:** "How to update the embedded web build to a new release".

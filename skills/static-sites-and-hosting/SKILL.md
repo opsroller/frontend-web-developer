@@ -96,6 +96,7 @@ third party on every visit).
 - Lighthouse-style lab checks pass the project's budgets (see
   `web-performance`, `web-accessibility`).
 - Headers verified on the deployed URL (e.g. `curl -sI`), not just in config.
+  Before deploy, say which headers only the deploy can confirm.
 - No broken internal links (run a link checker in CI).
 
 ## Failure modes

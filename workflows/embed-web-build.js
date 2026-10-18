@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 export const meta = {
   name: 'embed-web-build',
-  description: 'Embed an interactive web build (e.g. WebAssembly) in a page: agree the event contract, configure hosting headers, build the click-to-load host page and event bridge, verify in parallel, fix until clean, and document. args: { build: "<path to the web build output>", page: "<site path of the hosting page, e.g. /play/>", contract?: "<path to an existing event contract doc>" }',
+  description: 'Embed an interactive web build (e.g. WebAssembly) in a page: agree the event contract, configure hosting headers, build the click-to-load host page and event bridge, preview it locally (or on its deployed URL) with a browser probe, verify in parallel, fix until clean, fix the minor issues left, and document. args: { build: "<path to the web build output>", page: "<site path of the hosting page, e.g. /play/>", contract?: "<path to an existing event contract doc>", url?: "<deployed or preview URL of the page; omit to serve the built site locally>" }',
   phases: [
     { title: 'Plan', detail: 'build files, events, headers, bridge choice, doc kinds affected (compass)' },
     { title: 'Build', detail: 'one agent edits host config, page and bridge' },
-    { title: 'Verify', detail: 'parallel read-only checks' },
-    { title: 'Fix', detail: 'up to two fix rounds; blocked if blockers remain' },
+    { title: 'Preview', detail: 'serve the undeployed site locally (or use the given URL) and run the preview-probe browser harness before each verify round' },
+    { title: 'Verify', detail: 'parallel read-only checks on the probe report and the page' },
+    { title: 'Fix', detail: 'up to two fix rounds for blocker and major issues; blocked if they remain' },
+    { title: 'Polish', detail: 'fix the minor issues left, then a final preview and verify so the result lists only what is still open' },
     { title: 'Docs', detail: 'write the planned Diataxis pages in the same PR' },
     { title: 'Docs check', detail: 'one kind per page, titles, links' },
     { title: 'Handoff', detail: 'commit and push the host page, headers and bridge, run the site checks, return a handoff for engineering-practices deliver-package or land-pr' },
@@ -105,11 +107,16 @@ if (RUN.error) return RUN.error
 const RUN_OUT = await Promise.race([RUN.halted, (async (agent, phase, log) => {
 // --- run-modes v2 end (workflow body follows; close it with the tail line) ---
 
-const USAGE = 'usage: embed-web-build { build: "<path to web build output>", page: "/play/", contract?: "<path to event contract doc>" }'
+const USAGE = 'usage: embed-web-build { build: "<path to web build output>", page: "/play/", contract?: "<path to event contract doc>", url?: "<deployed or preview URL of the page>" }'
 if (!args || !args.build || !args.page) return USAGE
 const build = args.build
 const page = args.page
+const url = args.url || null
 const contractHint = args.contract ? `The existing event contract is at ${args.contract}; use it and report any gap.` : 'No contract document exists yet: derive the events from the build\'s code and exports, draft the contract table, and list questions for the role that owns the build.'
+
+// Failure modes that only show in a real browser; Plan names how this build
+// avoids each one and Build implements it.
+const FAILURE_MODES = 'Known failure modes to design out: (1) canvas backing store: when the page owns the layout (CSS sizes the canvas) and the engine does not resize it, the canvas keeps its 300x150 default or a stale size and renders blurry; set canvas.width/height to its box x devicePixelRatio on start and on every resize (ResizeObserver), or let the engine own the canvas size, never both; (2) downloads that bypass the engine\'s progress API: files the build or loader fetches itself (extra wasm modules, data packs, side modules) are not counted, so progress reads complete while bytes still arrive; route every file through the engine\'s preload or progress hook, or count their bytes in the page\'s progress; (3) start() left pending: some engines never reject start() when a fetch fails, leaving the page waiting forever; listen for fetch and resource errors (wrap fetch, or watch the engine\'s error callback) and add a watchdog timeout that shows the error state with retry.'
 
 const DOCS_FRAGMENT = 'Classify every user-visible change in this work with the Diataxis compass (action/cognition x study/work). For each, update or add exactly one page of that kind under the project docs/<kind>/ directory named in the project profile, keep each page to one kind, title it by the project pattern (tutorial "Build your first ...", how-to "How to <goal>", reference = the thing\'s name, explanation "About <topic>"), and link to the related pages of the other kinds. Report pages touched and any change you left undocumented and why.'
 
@@ -121,6 +128,9 @@ const PLAN = {
     bridge: { type: 'string', enum: ['same-document', 'iframe'] },
     contract: { type: 'array', items: { type: 'object', properties: { direction: { type: 'string' }, name: { type: 'string' }, payload: { type: 'string' }, when: { type: 'string' } }, required: ['direction', 'name'] } },
     questions_for_build_owner: { type: 'array', items: { type: 'string' } },
+    layout_owner: { type: 'string', enum: ['page', 'engine'] },
+    failure_modes: { type: 'array', items: { type: 'object', properties: { mode: { type: 'string' }, applies: { type: 'boolean' }, how: { type: 'string' } }, required: ['mode', 'applies'] } },
+    preview: { type: 'object', properties: { site_build: { type: 'string' }, root: { type: 'string' }, play: { type: 'string' }, ready_event: { type: 'string' }, ready_js: { type: 'string' }, error: { type: 'string' }, retry: { type: 'string' }, progress: { type: 'string' }, canvas: { type: 'string' }, release_key: { type: 'string' }, headers_file: { type: 'string' } } },
     files_to_change: { type: 'array', items: { type: 'string' } },
     doc_pages: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string' }, path: { type: 'string' }, why: { type: 'string' } }, required: ['kind', 'path'] } },
   },
@@ -137,7 +147,7 @@ const ISSUES = {
 
 phase('Plan')
 const plan = await agent(
-  `You are the frontend-web-developer. Onboard on the project (engineering-practices project-onboarding skill). Plan embedding the web build at ${build} into ${page}, following the embedding-web-builds skill. Inventory the build files with sizes, required MIME types and whether they are pre-compressed. Decide whether threads require cross-origin isolation, and choose the bridge (same-document or iframe) with a one-line reason. ${contractHint} List files you will change (host header config, page, bridge script). Plan the docs with the Diataxis compass: reference for the event contract and required headers; explanation for the bridge and click-to-load choices; a how-to "How to update the embedded web build". Do not edit anything yet.`,
+  `You are the frontend-web-developer. Onboard on the project (engineering-practices project-onboarding skill). Plan embedding the web build at ${build} into ${page}, following the embedding-web-builds skill. Inventory the build files with sizes, required MIME types and whether they are pre-compressed. Decide whether threads require cross-origin isolation, and choose the bridge (same-document or iframe) with a one-line reason. ${contractHint} ${FAILURE_MODES} For each of the three, say whether it applies to this build and how the page will avoid it, and say who owns the canvas size (layout_owner: page or engine). Plan the preview: the command that builds the site (site_build), the built site directory to serve (root), and the selectors and names the probe needs: play control, the ready event the build dispatches (or a ready_js expression), error and retry elements, progress element, canvas, the key that releases focus, and the host's header file if it has one (e.g. _headers). List files you will change (host header config, page, bridge script). Plan the docs with the Diataxis compass: reference for the event contract and required headers; explanation for the bridge and click-to-load choices; a how-to "How to update the embedded web build". Do not edit anything yet.`,
   { schema: PLAN, phase: 'Plan', label: 'plan' },
 )
 if (!plan) return 'embed-web-build: planning failed; nothing was changed.'
@@ -145,24 +155,43 @@ if (!plan.contract.length) return { status: 'blocked', reason: 'no event contrac
 
 phase('Build')
 const built = await agent(
-  `Embed the web build per this plan:\n${JSON.stringify(plan)}\nFollow the embedding-web-builds skill: correct MIME types and Content-Encoding; cross-origin isolation headers only on ${page} (or its iframe) if needed; reserved aspect-ratio space; click-to-load with poster and the download size; labelled progress; capability check with fallback linking native downloads; error state with retry; noscript message; focusable canvas with an accessible name and a documented key to release focus; pause on visibilitychange; handle every contract event (ignore unknown ones); postMessage with explicit targetOrigin and origin/source/payload checks if the bridge is an iframe. Keep the rest of the site's headers unchanged. Commit with a Conventional Commit message. Return files changed and how to preview.`,
+  `Embed the web build per this plan:\n${JSON.stringify(plan)}\nFollow the embedding-web-builds skill: correct MIME types and Content-Encoding; cross-origin isolation headers only on ${page} (or its iframe) if needed; reserved aspect-ratio space; click-to-load with poster and the download size; labelled progress; capability check with fallback linking native downloads; error state with retry; noscript message; focusable canvas with an accessible name and a documented key to release focus; pause on visibilitychange; handle every contract event (ignore unknown ones); design out the failure modes the plan marks as applying (${FAILURE_MODES}); keep the elements the plan's preview section names (play, error, retry, progress, canvas) so the probe can find them; postMessage with explicit targetOrigin and origin/source/payload checks if the bridge is an iframe. Keep the rest of the site's headers unchanged. Commit with a Conventional Commit message. Return files changed and how to preview.`,
   { phase: 'Build', label: 'build' },
 )
 if (!built) return 'embed-web-build: build agent failed; check the working tree for partial changes.'
 
 const CHECKS = [
-  ['hosting-headers', 'embedding-web-builds and static-sites-and-hosting', 'on the preview or deployed URL, check with curl -sI: .wasm is application/wasm, pre-compressed files have the right Content-Encoding, isolation headers present on the build page only and self.crossOriginIsolated is true there if needed, CSP allows exactly what the build needs, other pages unchanged'],
-  ['loading-and-failure', 'embedding-web-builds', 'click-to-load works, progress shown and announced, unsupported browser shows the fallback with download links, a failed fetch shows an error with retry, noscript message present'],
+  ['hosting-headers', 'embedding-web-builds and static-sites-and-hosting', 'on a deployed URL, check with curl -sI; on an undeployed build, the local preview server only shows what it sends, so read the host\'s header config (e.g. _headers, server or CDN config) for what the host will send and confirm the probe ran with it (--headers-file), and say which headers only a deploy can confirm. Check: .wasm is application/wasm, pre-compressed files have the right Content-Encoding, isolation headers present on the build page only and self.crossOriginIsolated is true there if needed, CSP allows exactly what the build needs, other pages unchanged'],
+  ['loading-and-failure', 'embedding-web-builds', 'click-to-load works, progress shown and announced and no download finishes after progress shows complete (downloads that bypass the engine\'s progress API), unsupported browser shows the fallback with download links, a failed fetch of each build file shows an error with a retry that recovers and never leaves start() pending, the canvas backing store matches its box x devicePixelRatio at each probed viewport (not the 300x150 default), noscript message present'],
   ['contract', 'embedding-web-builds', `every event in the contract is handled or deliberately ignored, payloads validated, postMessage origin checks in place if an iframe is used. Contract: ${JSON.stringify(plan.contract)}`],
   ['accessibility', 'web-accessibility', 'keyboard can reach the build, enter it and leave it (no trap), canvas has an accessible name, instructions are HTML text, controls meet target size and contrast, reduced motion respected on the host page'],
   ['performance', 'web-performance', 'the hosting page Core Web Vitals in lab with mobile throttling are unaffected before the click: no build bytes fetched before the click, no layout shift when the canvas appears'],
 ]
-const verify = (round) => parallel(CHECKS.map(([name, skill, what]) => () =>
-  agent(`Check the embedded web build on ${page} (round ${round}) following the ${skill} skill: ${what}. Read-only: change no files. Return issues with where, problem, severity and fix.`,
-    { schema: ISSUES, phase: 'Verify', label: `${name}#${round}`, independent: true })
-    .then(r => r || { check: name, issues: [{ where: page, problem: `${name} check did not run (agent failed)`, severity: 'blocker', fix: 're-run this check' }], unverified: true })))
+// The probe runs the page in a real browser before each verify round, so
+// the checks read evidence instead of assuming a deployed URL.
+const PREVIEW = {
+  type: 'object',
+  properties: { url: { type: 'string' }, deployed: { type: 'boolean' }, command: { type: 'string' }, report: { type: 'string' }, problems: { type: 'array', items: { type: 'object' } }, ran: { type: 'boolean' }, why_not: { type: 'string' } },
+  required: ['url', 'deployed', 'command', 'ran'],
+}
+const probeSetup = JSON.stringify(plan.preview || {})
+const preview = (round) => agent(
+  `Preview the embedded web build on ${page} (round ${round}) following the embedding-web-builds skill, "Auditing an undeployed build". ${url ? `Probe the given URL ${url} (deployed: say whether it is the live host or a preview).` : 'Nothing is deployed: build the site with the project\'s site build command, then serve the built site locally with the probe.'} Run this plugin's browser harness: node <frontend-web-developer plugin dir>/tools/preview-probe.mjs ${url ? `--url ${url}` : '--root <built site dir> --page ' + page} with --play, --ready (or --ready-js), --error, --retry, --progress, --canvas, --release-key and --headers-file from this setup: ${probeSetup}, and --out <a report file outside the repository>. It loads the page, clicks play, waits for the ready event, checks progress, canvas backing-store size at two viewports and focus, then injects a failed fetch of each build file and checks for an error with a working retry. If Playwright or its browser is missing, install it outside the repository (npm install --no-save playwright in a scratch directory, then run the probe with NODE_PATH=<scratch>/node_modules and absolute paths), or report ran: false with why_not. Do not edit, commit or fix anything. Return the URL probed, whether it is deployed, the exact command, the report path, and the report's problems list.`,
+  { schema: PREVIEW, phase: 'Preview', label: `preview#${round}` },
+)
+const verify = async (round) => {
+  phase('Preview')
+  const pv = await preview(round)
+  const evidence = pv && pv.ran
+    ? `Browser probe report (${pv.deployed ? 'deployed' : 'local preview'} ${pv.url}; command: ${pv.command}; report file: ${pv.report || 'not saved'}): problems ${JSON.stringify(pv.problems || [])}. Re-run the command yourself if you need more than the report shows.`
+    : `The browser probe did not run (${(pv && pv.why_not) || 'preview step failed'}); run node <frontend-web-developer plugin dir>/tools/preview-probe.mjs yourself (setup: ${probeSetup}) or mark what you could not check as a blocker.`
+  phase('Verify')
+  return parallel(CHECKS.map(([name, skill, what]) => () =>
+    agent(`Check the embedded web build on ${page} (round ${round}) following the ${skill} skill: ${what}. ${evidence} Read-only: change no files. Return issues with where, problem, severity and fix.`,
+      { schema: ISSUES, phase: 'Verify', label: `${name}#${round}`, independent: true })
+      .then(r => r || { check: name, issues: [{ where: page, problem: `${name} check did not run (agent failed)`, severity: 'blocker', fix: 're-run this check' }], unverified: true })))
+}
 
-phase('Verify')
 let results = await verify(1)
 let open = results.flatMap(r => r.issues.filter(i => i.severity !== 'minor'))
 let round = 1
@@ -171,12 +200,27 @@ while (open.length && round <= 2) {
   const fixed = await agent(`Fix these issues with the embedded web build on ${page}, following the frontend-web-developer skills. You are the only agent editing files. Problems inside the build itself go back to its owning role as a written request; do not patch build output. Commit with Conventional Commit messages.\n${JSON.stringify(open)}`, { phase: 'Fix', label: `fix#${round}` })
   if (!fixed) break
   round++
-  phase('Verify')
   results = await verify(round)
   open = results.flatMap(r => r.issues.filter(i => i.severity !== 'minor'))
 }
-const minor = results.flatMap(r => r.issues.filter(i => i.severity === 'minor'))
+let minor = results.flatMap(r => r.issues.filter(i => i.severity === 'minor'))
 if (open.length) return { status: 'blocked', page, open_items: open, minor, questions_for_build_owner: plan.questions_for_build_owner || [] }
+
+// Minor issues are fixed too, not handed off; a final preview and verify
+// make the result list what is still open after the fixes, not before.
+let polished = null
+if (minor.length) {
+  phase('Polish')
+  polished = await agent(`Fix these minor issues with the embedded web build on ${page}, following the frontend-web-developer skills. You are the only agent editing files. Fix every one you can with a small change; leave one only when it needs a decision from another role or changes inside the build itself (send those to the owning role as a written request), and say why. Commit with Conventional Commit messages.\n${JSON.stringify(minor)}`,
+    { schema: { type: 'object', properties: { fixed: { type: 'array', items: { type: 'string' } }, left: { type: 'array', items: { type: 'object', properties: { where: { type: 'string' }, problem: { type: 'string' }, why: { type: 'string' } }, required: ['problem', 'why'] } } }, required: ['fixed'] }, phase: 'Polish', label: 'polish' })
+  if (polished) {
+    round++
+    results = await verify(round)
+    open = results.flatMap(r => r.issues.filter(i => i.severity !== 'minor'))
+    minor = results.flatMap(r => r.issues.filter(i => i.severity === 'minor'))
+    if (open.length) return { status: 'blocked', page, reason: 'the final verify after fixing minor issues found blocker or major issues', open_items: open, minor, polished, questions_for_build_owner: plan.questions_for_build_owner || [] }
+  }
+}
 
 phase('Docs')
 const docs = await agent(
@@ -213,6 +257,9 @@ return {
   bridge: plan.bridge,
   built,
   minor_issues: minor,
+  minor_fixed: polished ? polished.fixed || [] : [],
+  minor_left: polished ? polished.left || [] : [],
+  verify_rounds: round,
   questions_for_build_owner: plan.questions_for_build_owner || [],
   docs,
   docs_check: !check ? 'docs check failed: pages unverified' : check.ok ? 'ok' : check.problems || ['docs check failed without details'],
@@ -224,7 +271,10 @@ return {
     tests_pass: true,
     docs: docs.pages || [],
     undocumented: docs.undocumented || [],
-    notes: (plan.questions_for_build_owner || []).length ? [`open questions for the build owner: ${plan.questions_for_build_owner.join('; ')}`] : [],
+    notes: [
+      ...((plan.questions_for_build_owner || []).length ? [`open questions for the build owner: ${plan.questions_for_build_owner.join('; ')}`] : []),
+      ...(minor.length ? [`minor issues still open after the final verify (round ${round}): ${minor.map((i) => `${i.where}: ${i.problem}`).join('; ')}`] : []),
+    ],
   },
   next: 'ship it without rebuilding: /engineering-practices:deliver-package { wp: "<the package>", prior: <this result> }; with no work package, /engineering-practices:land-pr { branch: "<handoff.branch>" }',
 }

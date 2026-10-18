@@ -35,9 +35,9 @@ project from empty folder to a verified, documented page.
 and [fix a failing Core Web Vital](docs/how-to/how-to-fix-a-failing-core-web-vital.md).
 
 **Looking something up?** The [reference](docs/reference/index.md) describes
-the agent, each of the eight skills and the three workflows
+the agent, each of the eight skills, the three workflows
 (`site-audit`, `build-download-page`, `embed-web-build`) with their
-arguments and outputs.
+arguments and outputs, and the `preview-probe` browser harness.
 
 **Want the why?** [About the role](docs/explanation/about-the-role.md)
 explains what the job is, where it stops and its neighbours begin, and the
