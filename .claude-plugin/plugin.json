@@ -1,0 +1,14 @@
+{
+  "name": "frontend-web-developer",
+  "version": "0.1.0",
+  "description": "Front-end web developer: builds fast, accessible static websites, such as a product's landing and download site, with platform detection, store links and credits.",
+  "author": {
+    "name": "opsroller"
+  },
+  "repository": "https://github.com/opsroller/frontend-web-developer",
+  "license": "MIT",
+  "keywords": [
+    "role",
+    "job-function"
+  ]
+}
