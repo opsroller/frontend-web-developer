@@ -25,7 +25,7 @@
 | Field | Value |
 |---|---|
 | `name` | `frontend-web-developer` |
-| `version` | `0.4.0` |
+| `version` | `0.6.0` |
 | `author.name` | `opsroller` |
 | `repository` | `https://github.com/opsroller/frontend-web-developer` |
 | `license` | `GPL-2.0-or-later` |

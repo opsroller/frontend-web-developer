@@ -68,7 +68,11 @@ not have (see cross-origin isolation below) or comes from another origin.
    WebGL/WebGPU availability as the build needs) and show a clear fallback:
    what is missing, and links to the native downloads.
 5. Handle the `error` event and load failures (network, out of memory) with a
-   message and a retry button; never leave a spinner forever.
+   message and a retry button; never leave a spinner forever. Treat a 4xx/5xx
+   response and a body that fails mid-download as failures, and make retry
+   start the load over (new requests, promises and streams, a fresh engine
+   instance if `start()` cannot run twice): the network often fails once and
+   then works.
 6. `<noscript>`: say the build needs JavaScript and link to downloads.
 
 ## 5. Be a good guest on the page
@@ -114,7 +118,11 @@ checks cannot start with `curl -sI <url>`. Audit it locally instead:
    complete, measures the canvas backing store against its box at two
    viewports, checks focus and the release key, then fails the fetch of
    each build file in turn and checks the page shows an error and that
-   retry recovers. It exits 1 with a `problems` list when anything fails.
+   retry recovers. Last it fails each build file once, three ways (first
+   request aborted, answered 503, or cut off mid-body; every later request
+   served), and checks the page reaches ready by its own retry or the
+   retry control, never on the failed response. A full block cannot catch
+   a retry that reuses the failed promise or stream; this does. It exits 1 with a `problems` list when anything fails.
    `--serve-only` just serves the site for manual or Lighthouse runs.
 3. Headers: the local server sends what `--header` and `--headers-file`
    give it, so it shows the page works with the host's header file, not
@@ -155,6 +163,12 @@ checks cannot start with `curl -sI <url>`. Audit it locally instead:
   waits forever with no error. Watch fetch and resource errors (wrap
   `fetch`, use the engine's error callback) and add a watchdog timeout
   that shows the error state with retry.
+- A retry that never recovers from a one-time failure: it reuses the
+  rejected promise, the consumed response or stream, or a half-started
+  engine, so the error shows again although the network is fine. Or the
+  loader ignores `response.ok` or swallows a body read error and starts
+  the build with an error page or partial bytes. Only a fail-once probe
+  shows these; a fully blocked file looks handled.
 
 ## Docs this work owes
 

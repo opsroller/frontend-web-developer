@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Serve an undeployed site locally and probe an embedded web build in a real
 // browser: what loads before the click, the ready event, progress, canvas
-// backing-store size, keyboard focus, and the page's answer to a failed
-// fetch of each build file. Prints a JSON report; exits 1 when it finds a
+// backing-store size, keyboard focus, the page's answer to a failed fetch
+// of each build file, and its recovery from a one-time failure of each
+// (aborted, 503, or cut off mid-body, then served normally). Prints a JSON report; exits 1 when it finds a
 // problem, 2 on a usage error.
 // Usage:
 //   node tools/preview-probe.mjs --root <site dir> --page /play/ [options]
@@ -19,10 +20,11 @@ const USAGE = `usage: node tools/preview-probe.mjs (--root <dir> [--page /play/]
   [--play <selector>] [--ready <event name> | --ready-js <expression>] [--error <selector>]
   [--retry <selector>] [--canvas <selector>] [--progress <selector>] [--release-key <key>]
   [--header '<path glob>|<Name>: <value>']... [--headers-file <_headers file>]
-  [--fail auto|none|<url part>,...] [--build-pattern <regex>] [--timeout <ms>] [--browser chromium|firefox|webkit]
+  [--fail auto|none|<url part>,...] [--flaky auto|none|<url part>,...] [--flaky-modes abort,503,truncate]
+  [--build-pattern <regex>] [--timeout <ms>] [--browser chromium|firefox|webkit]
   [--viewport <w>x<h>[@<dpr>]]... [--out <report.json>] [--port <n>] [--serve-only]`
 
-const opt = { header: [], viewport: [], fail: 'auto', timeout: 30000, browser: 'chromium', canvas: 'canvas', port: 0, page: '/', buildPattern: '\\.(wasm|pck|data|bin)(\\?|$)' }
+const opt = { header: [], viewport: [], fail: 'auto', flaky: 'auto', flakyModes: 'abort,503,truncate', timeout: 30000, browser: 'chromium', canvas: 'canvas', port: 0, page: '/', buildPattern: '\\.(wasm|pck|data|bin)(\\?|$)' }
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) {
   const flag = argv[i]
@@ -33,11 +35,14 @@ for (let i = 0; i < argv.length; i++) {
   if (val === undefined) { console.error(`${flag} needs a value\n${USAGE}`); process.exit(2) }
   if (name === 'header' || name === 'viewport') opt[name].push(val)
   else if (name === 'timeout' || name === 'port') opt[name] = Number(val)
-  else if (['root', 'page', 'url', 'play', 'ready', 'readyJs', 'error', 'retry', 'canvas', 'progress', 'releaseKey', 'headersFile', 'fail', 'browser', 'out', 'buildPattern'].includes(name)) opt[name] = val
+  else if (['root', 'page', 'url', 'play', 'ready', 'readyJs', 'error', 'retry', 'canvas', 'progress', 'releaseKey', 'headersFile', 'fail', 'flaky', 'flakyModes', 'browser', 'out', 'buildPattern'].includes(name)) opt[name] = val
   else { console.error(`unknown flag ${flag}\n${USAGE}`); process.exit(2) }
 }
 if (!opt.root === !opt.url) { console.error(`give exactly one of --root and --url\n${USAGE}`); process.exit(2) }
 if (opt.serveOnly && !opt.root) { console.error(`--serve-only needs --root\n${USAGE}`); process.exit(2) }
+const FLAKY_MODES = ['abort', '503', 'truncate']
+const flakyModes = opt.flakyModes.split(',').map((s) => s.trim()).filter(Boolean)
+for (const m of flakyModes) if (!FLAKY_MODES.includes(m)) { console.error(`--flaky-modes takes ${FLAKY_MODES.join(', ')}, got "${m}"\n${USAGE}`); process.exit(2) }
 
 // --- local preview server ---------------------------------------------------
 const MIME = {
@@ -68,6 +73,10 @@ if (opt.headersFile) {
     if (path && colon > 0) rules.push({ re: glob(path), name: raw.slice(0, colon).trim(), value: raw.slice(colon + 1).trim() })
   }
 }
+// One-time mid-body cut-offs the local server applies (url part -> state),
+// set by the partial-failure runs: the first matching request gets its full
+// headers and half the body, then the connection drops.
+const cutOffs = new Map()
 const serve = (root) => new Promise((ok) => {
   const base = resolve(root)
   const server = createServer((req, res) => {
@@ -94,6 +103,17 @@ const serve = (root) => new Promise((ok) => {
     headers['Content-Length'] = statSync(file).size
     headers['Cache-Control'] = 'no-store'
     for (const r of rules) if (r.re.test(url.pathname)) headers[r.name] = r.value
+    const cut = req.method === 'HEAD' ? null : [...cutOffs].find(([part]) => req.url.includes(part))
+    if (cut) {
+      cut[1].hits++
+      if (cut[1].left > 0) {
+        cut[1].left--
+        const body = readFileSync(file)
+        res.writeHead(200, headers)
+        res.write(body.subarray(0, Math.floor(body.length / 2)), () => setTimeout(() => res.destroy(), 50))
+        return
+      }
+    }
     res.writeHead(200, headers)
     if (req.method === 'HEAD') res.end(); else createReadStream(file).pipe(res)
   })
@@ -209,7 +229,7 @@ const start = async (page) => {
   return true
 }
 
-const report = { url: pageUrl, served_from: opt.root ? resolve(opt.root) : null, browser: opt.browser, viewports, before_click: null, start: null, canvas: [], focus: null, failures: [], headers: [], problems }
+const report = { url: pageUrl, served_from: opt.root ? resolve(opt.root) : null, browser: opt.browser, viewports, before_click: null, start: null, canvas: [], focus: null, failures: [], partial_failures: [], headers: [], problems }
 
 // 1. Successful load.
 const { ctx, page, log } = await newPage()
@@ -295,10 +315,9 @@ report.cross_origin_isolated = await page.evaluate(() => self.crossOriginIsolate
 await ctx.close()
 
 // 2. A failed fetch of each build file must end in a visible error, not a hang.
-const targets = opt.fail === 'none' ? [] : opt.fail === 'auto'
-  ? report.start.files.filter((f) => firstParty(f.url) && !/text\/html|text\/css/.test(f.type) && f.url !== pageUrl).map((f) => new URL(f.url).pathname)
-  : opt.fail.split(',').map((s) => s.trim()).filter(Boolean)
-for (const target of [...new Set(targets)]) {
+const autoTargets = report.start.files.filter((f) => firstParty(f.url) && !/text\/html|text\/css/.test(f.type) && f.url !== pageUrl).map((f) => new URL(f.url).pathname)
+const pick = (v) => [...new Set(v === 'none' ? [] : v === 'auto' ? autoTargets : v.split(',').map((s) => s.trim()).filter(Boolean))]
+for (const target of pick(opt.fail)) {
   const run = await newPage()
   let hits = 0
   const match = (u) => u.href.includes(target)
@@ -329,6 +348,64 @@ for (const target of [...new Set(targets)]) {
   }
   if (!opt.error && fail.outcome === 'hung') fail.note = 'pass --error <selector> so the probe can see the error state'
   report.failures.push(fail)
+  await run.ctx.close()
+}
+
+// 3. A one-time failure of each build file (the first request aborted,
+// answered 503, or cut off mid-body; every later request served normally)
+// must end in ready: by the page's own retry, or by the retry control once
+// the error shows. A full block (step 2) cannot catch a retry that reuses
+// the failed request, promise, response or stream, an unchecked HTTP status,
+// or a body read error that is swallowed; this step does.
+const HINT = {
+  abort: 'a request error is swallowed somewhere between the fetch and the engine',
+  503: 'check response.ok (or the status) before using a body; an error page is not the file',
+  truncate: 'a body read that fails mid-stream must fail the load, not hang or resolve with the partial bytes',
+}
+for (const target of pick(opt.flaky)) for (const mode of flakyModes) {
+  const entry = { file: target, mode, outcome: 'hung', ms: null, requests: 0 }
+  if (mode === 'truncate' && !server) { report.partial_failures.push(Object.assign(entry, { outcome: 'skipped', note: 'truncate needs --root: the probe cuts the body off in its own server' })); continue }
+  const run = await newPage()
+  let hits = 0
+  const match = (u) => u.href.includes(target)
+  const cut = { left: 1, hits: 0 }
+  if (mode === 'truncate') cutOffs.set(target, cut)
+  else await run.page.route(match, (route) => {
+    if (++hits > 1) return route.continue()
+    return mode === 'abort' ? route.abort('failed') : route.fulfill({ status: 503, contentType: 'text/plain', body: 'service unavailable' })
+  })
+  const requests = () => mode === 'truncate' ? cut.hits : hits
+  const t0 = Date.now()
+  let errorShown = false
+  if (!(await start(run.page))) entry.outcome = 'no-play-control'
+  else {
+    const end = Date.now() + Math.min(opt.timeout, 15000)
+    while (Date.now() < end) {
+      if (await ready(run.page)) { entry.outcome = 'recovered'; break }
+      if (opt.error && await visible(run.page, opt.error)) { errorShown = true; break }
+      await run.page.waitForTimeout(100)
+    }
+    if (errorShown) {
+      const retry = opt.retry ? run.page.locator(opt.retry).first() : null
+      if (!retry) { entry.outcome = 'error-shown'; entry.note = 'pass --retry <selector> so the probe can test recovery' }
+      else if (!(await retry.isVisible().catch(() => false))) entry.outcome = 'no-retry-control'
+      else {
+        const before = requests()
+        await retry.click()
+        entry.outcome = (await waitFor(run.page, () => ready(run.page), opt.timeout)) ? 'recovered-after-retry' : 'retry-failed'
+        entry.refetched = requests() > before
+      }
+    }
+    entry.ms = Date.now() - t0
+  }
+  entry.requests = requests()
+  cutOffs.delete(target)
+  const what = `one-time ${mode} of ${target}`
+  if (entry.requests === 0 && entry.outcome !== 'no-play-control') { entry.note = 'the file was not requested in this run' }
+  else if (entry.outcome === 'hung') problem('loading-and-failure', 'blocker', `${what}: no ready and no error within ${entry.ms} ms (requests: ${entry.requests}); ${HINT[mode]}`)
+  else if (entry.outcome === 'recovered' && entry.requests < 2) { entry.outcome = 'ready-on-bad-data'; problem('loading-and-failure', 'major', `${what}: ready with only the failed response (requests: 1), so the page used a missing, error or partial body as the file; ${HINT[mode]}`) }
+  else if (entry.outcome === 'retry-failed') problem('loading-and-failure', 'major', `${what}: the error showed, but retry did not reach ready although the file now serves normally${entry.refetched ? '' : ' and the retry never requested it again'}; the retry must start the load over (new request, promise and stream, and a fresh engine instance if start() cannot run twice) instead of reusing the failed one`)
+  report.partial_failures.push(entry)
   await run.ctx.close()
 }
 
