@@ -1,6 +1,6 @@
 ---
 name: privacy-respecting-analytics
-description: Use when a project wants to measure website traffic, downloads or Core Web Vitals, or when adding any script, embed or font that talks to a third party: choosing data-minimal, cookieless measurement and keeping the site free of trackers.
+description: 'Use when a project wants to measure website traffic, downloads or Core Web Vitals, or when adding any script, embed or font that talks to a third party: choosing data-minimal, cookieless measurement and keeping the site free of trackers.'
 ---
 
 # Privacy-respecting analytics

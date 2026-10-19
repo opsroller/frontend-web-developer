@@ -1,6 +1,6 @@
 ---
 name: web-accessibility
-description: Use when building, changing or auditing any web page for accessibility: meeting WCAG 2.2 level AA, testing with keyboard, zoom and screen readers, and writing up issues with who they affect.
+description: 'Use when building, changing or auditing any web page for accessibility: meeting WCAG 2.2 level AA, testing with keyboard, zoom and screen readers, and writing up issues with who they affect.'
 ---
 
 # Web accessibility (WCAG 2.2 AA)

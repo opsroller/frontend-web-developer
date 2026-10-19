@@ -1,6 +1,6 @@
 ---
 name: seo-and-metadata
-description: Use when making pages discoverable and shareable: titles, meta descriptions, canonical URLs, sitemaps, robots rules, social preview (Open Graph) tags, structured data for software, international pages, and checking how search engines see the site.
+description: 'Use when making pages discoverable and shareable: titles, meta descriptions, canonical URLs, sitemaps, robots rules, social preview (Open Graph) tags, structured data for software, international pages, and checking how search engines see the site.'
 ---
 
 # SEO and metadata
