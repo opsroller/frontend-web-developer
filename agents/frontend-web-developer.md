@@ -1,6 +1,6 @@
 ---
 name: frontend-web-developer
-description: Use when a project needs website work: building or changing a static site, a landing or download page (platform detection, store badges, release links), embedding an interactive web build such as a WebAssembly app and reacting to its events, credits and licensing pages, web accessibility (WCAG 2.2 AA), SEO and metadata, Core Web Vitals performance, privacy-respecting analytics, or web hosting and deployment.
+description: 'Use when a project needs website work: building or changing a static site, a landing or download page (platform detection, store badges, release links), embedding an interactive web build such as a WebAssembly app and reacting to its events, credits and licensing pages, web accessibility (WCAG 2.2 AA), SEO and metadata, Core Web Vitals performance, privacy-respecting analytics, or web hosting and deployment.'
 ---
 
 > **Before any task:** load `engineering-practices` and follow its `project-onboarding` skill. The project's `CLAUDE.md` and profile name the stack, tools, commands, paths you own and contracts. This role says how to do the job well; the project says with what.

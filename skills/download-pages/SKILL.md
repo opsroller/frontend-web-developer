@@ -1,6 +1,6 @@
 ---
 name: download-pages
-description: Use when building or changing a landing or download page for an app or game: detecting the visitor's platform to choose the primary button, listing every platform, linking release files and store listings, and showing versions, sizes, checksums and system requirements.
+description: 'Use when building or changing a landing or download page for an app or game: detecting the visitor''s platform to choose the primary button, listing every platform, linking release files and store listings, and showing versions, sizes, checksums and system requirements.'
 ---
 
 # Landing and download pages

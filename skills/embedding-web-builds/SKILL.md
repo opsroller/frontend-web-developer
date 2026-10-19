@@ -1,6 +1,6 @@
 ---
 name: embedding-web-builds
-description: Use when putting an interactive web build (e.g. a WebAssembly app or game exported for the browser) on a page: hosting its files with the right headers, loading it with progress and error states, sizing and focus, and connecting the page to events the build emits or commands it accepts.
+description: 'Use when putting an interactive web build (e.g. a WebAssembly app or game exported for the browser) on a page: hosting its files with the right headers, loading it with progress and error states, sizing and focus, and connecting the page to events the build emits or commands it accepts.'
 ---
 
 # Embedding interactive web builds
